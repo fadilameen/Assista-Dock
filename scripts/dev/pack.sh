@@ -22,6 +22,8 @@ gnome-extensions pack "$EXTENSION_DIR" \
   --out-dir "$ROOT_DIR" 2>&1 | tee "$EVIDENCE_PATH"
 
 if [[ -f "$ZIP_PATH" ]]; then
+  # EGO-P-006: remove pre-compiled schema — GNOME 45+ compiles it on install
+  zip -d "$ZIP_PATH" "schemas/gschemas.compiled" 2>/dev/null || true
   printf 'Packed: %s\n' "$ZIP_PATH"
 else
   printf 'Error: expected archive not found at %s\n' "$ZIP_PATH" >&2
