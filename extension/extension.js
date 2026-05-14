@@ -178,6 +178,10 @@ class UsageIndicator extends PanelMenu.Button {
             this._updateOrnaments();
             this._refreshRelativeTimes();
         });
+        this._invertChangedId = this._settings.connect('changed::display-inverted', () => {
+            this._updateInvertOrnament();
+            this._refreshRelativeTimes();
+        });
     }
 
     _iconPath(name) {
@@ -260,8 +264,24 @@ class UsageIndicator extends PanelMenu.Button {
             this._displaySubmenu.menu.addMenuItem(item);
         }
 
+        this._displaySubmenu.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        this._invertItem = new PopupMenu.PopupMenuItem('↕  Reversed (% left)');
+        this._invertItem.connect('activate', () => {
+            const current = this._settings.get_boolean('display-inverted');
+            this._settings.set_boolean('display-inverted', !current);
+        });
+        this._displaySubmenu.menu.addMenuItem(this._invertItem);
+
         this._updateOrnaments();
+        this._updateInvertOrnament();
         this.menu.addMenuItem(this._displaySubmenu);
+    }
+
+    _updateInvertOrnament() {
+        if (!this._invertItem) return;
+        const inverted = this._settings.get_boolean('display-inverted');
+        this._invertItem.setOrnament(inverted ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
     }
 
     _onModeActivate(mode) {
@@ -376,6 +396,7 @@ class UsageIndicator extends PanelMenu.Button {
             now: Date.now(),
             pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
             panelLabelModes: this._settings.get_strv('panel-label-modes'),
+            displayInverted: this._settings.get_boolean('display-inverted'),
         }));
     }
 
@@ -385,6 +406,7 @@ class UsageIndicator extends PanelMenu.Button {
             now: Date.now(),
             pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
             panelLabelModes: this._settings.get_strv('panel-label-modes'),
+            displayInverted: this._settings.get_boolean('display-inverted'),
         }));
     }
 
@@ -398,7 +420,7 @@ class UsageIndicator extends PanelMenu.Button {
 
         const fillClass = FILL_CLASSES[w.dotColor] ?? 'usage-fill-red';
         metric.fill.style_class = fillClass;
-        metric.fill._remainingPct = w.remainingPct;
+        metric.fill._remainingPct = w.fillPct;
         metric.mReset.text = w.resetsInText;
 
         const node = metric.track.get_theme_node();
@@ -406,7 +428,7 @@ class UsageIndicator extends PanelMenu.Button {
             const cb = node.get_content_box(metric.track.get_allocation_box());
             const tw = cb.x2 - cb.x1;
             if (tw > 0)
-                metric.fill.set_width(Math.round(tw * w.remainingPct / 100));
+                metric.fill.set_width(Math.round(tw * w.fillPct / 100));
         }
     }
 
@@ -517,6 +539,11 @@ class UsageIndicator extends PanelMenu.Button {
         if (this._settingsChangedId && this._settings) {
             this._settings.disconnect(this._settingsChangedId);
             this._settingsChangedId = null;
+        }
+
+        if (this._invertChangedId && this._settings) {
+            this._settings.disconnect(this._invertChangedId);
+            this._invertChangedId = null;
         }
 
         this._settings = null;

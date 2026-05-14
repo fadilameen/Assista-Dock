@@ -81,11 +81,12 @@ function buildPanelColor(summary, specificModes) {
     return worst;
 }
 
-function formatPercent(value) {
+function formatPercent(value, inverted = false) {
     if (!Number.isFinite(value))
         return '--';
 
-    return `${Math.round(value)}%`;
+    const pct = inverted ? Math.round(value) : Math.round(100 - value);
+    return `${pct}%`;
 }
 
 var getDotColor = function(pct) {
@@ -137,11 +138,13 @@ var formatRelativeTime = function(iso, now) {
     return parts.join(' ');
 }
 
-function formatRemainingText(pct) {
+function formatRemainingText(pct, inverted = false) {
     if (!Number.isFinite(pct))
-        return '-- left';
+        return inverted ? '-- left' : '-- used';
 
-    return `${Math.round(pct)}% left`;
+    return inverted
+        ? `${Math.round(pct)}% left`
+        : `${Math.round(100 - pct)}% used`;
 }
 
 function formatResetsIn(iso, now) {
@@ -171,17 +174,19 @@ function toWarningText(providerLabel, code) {
     return '';
 }
 
-function buildWindowViewModel(label, remainingPct, resetsAtIso, now) {
+function buildWindowViewModel(label, remainingPct, resetsAtIso, now, inverted = false) {
+    const safeRemaining = Number.isFinite(remainingPct) ? Math.round(remainingPct) : 0;
     return {
         label,
-        remainingPct: Number.isFinite(remainingPct) ? Math.round(remainingPct) : 0,
-        remainingText: formatRemainingText(remainingPct),
+        remainingPct: safeRemaining,
+        fillPct: inverted ? safeRemaining : Math.round(100 - safeRemaining),
+        remainingText: formatRemainingText(remainingPct, inverted),
         resetsInText: formatResetsIn(resetsAtIso, now),
         dotColor: getDotColor(remainingPct),
     };
 }
 
-function buildServiceViewModel(name, providerData, providerCode, now) {
+function buildServiceViewModel(name, providerData, providerCode, now, inverted = false) {
     const data = providerData ?? null;
 
     return {
@@ -192,12 +197,14 @@ function buildServiceViewModel(name, providerData, providerCode, now) {
                 data?.sessionRemainingPct,
                 data?.sessionResetsAtIso,
                 now,
+                inverted,
             ),
             buildWindowViewModel(
                 'Weekly',
                 data?.weeklyRemainingPct,
                 data?.weeklyResetsAtIso,
                 now,
+                inverted,
             ),
         ],
         warning: toWarningText(name, providerCode),
@@ -226,6 +233,7 @@ var buildUsageViewModel = function(summary, deps = {}) {
     const now = deps.now ?? Date.now();
     const version = deps.version ?? VERSION;
     const pollIntervalMs = deps.pollIntervalMs ?? 180_000;
+    const inverted = deps.displayInverted ?? false;
 
     // Accept both old single string and new array; default to 'overall'
     let userModes = deps.panelLabelModes ?? deps.panelLabelMode ?? ['overall'];
@@ -242,7 +250,7 @@ var buildUsageViewModel = function(summary, deps = {}) {
     const panelEntries = specificModes.map(mode => {
         const val = getPanelLabelValue(summary, mode);
         const label = MODE_LABEL[mode] ?? '';
-        const pct = formatPercent(val);
+        const pct = formatPercent(val, inverted);
         // Format: "S: 85%" / "W: 60%" / "85%" (for overall/min)
         const text = label ? `${label} ${pct}` : pct;
         return {
@@ -257,8 +265,8 @@ var buildUsageViewModel = function(summary, deps = {}) {
         panelColor: buildPanelColor(summary, specificModes),
         panelEntries,
         services: [
-            buildServiceViewModel('Codex', codex?.data, codex?.code, now),
-            buildServiceViewModel('Claude', claude?.data, claude?.code, now),
+            buildServiceViewModel('Codex', codex?.data, codex?.code, now, inverted),
+            buildServiceViewModel('Claude', claude?.data, claude?.code, now, inverted),
         ],
         version,
         lastUpdate: formatNextUpdate(summary?.lastUpdatedAtIso, pollIntervalMs, now),
