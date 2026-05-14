@@ -1,5 +1,5 @@
-export const DEFAULT_BACKOFF_INITIAL_DELAY_MS = 30_000;
-export const DEFAULT_BACKOFF_MAX_DELAY_MS = 15 * 60_000;
+var DEFAULT_BACKOFF_INITIAL_DELAY_MS = 30_000;
+var DEFAULT_BACKOFF_MAX_DELAY_MS = 15 * 60_000;
 
 function computeDelayMs(initialDelayMs, maxDelayMs, attempt) {
     const cappedAttempt = Math.max(1, attempt);
@@ -7,7 +7,7 @@ function computeDelayMs(initialDelayMs, maxDelayMs, attempt) {
     return Math.min(delay, maxDelayMs);
 }
 
-export function createBackoffManager(options = {}) {
+var createBackoffManager = function(options = {}) {
     const initialDelayMs = options.initialDelayMs ?? DEFAULT_BACKOFF_INITIAL_DELAY_MS;
     const maxDelayMs = options.maxDelayMs ?? DEFAULT_BACKOFF_MAX_DELAY_MS;
     const nowMs = options.nowMs ?? (() => Date.now());

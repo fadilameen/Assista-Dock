@@ -1,4 +1,8 @@
-import {normalizeCodexUsage} from '../core/normalize.js';
+const { GLib } = imports.gi;
+const ExtensionUtils = imports.misc.extensionUtils;
+const Me = ExtensionUtils.getCurrentExtension();
+
+const {normalizeCodexUsage} = Me.imports.lib.core.normalize;
 
 const CREDENTIALS_PATH = '~/.codex/auth.json';
 const REFRESH_ENDPOINT = 'https://auth.openai.com/oauth/token';
@@ -124,10 +128,10 @@ function readTokenBundle(credentials) {
     };
 }
 
-export function createCodexProvider(options = {}) {
+var createCodexProvider = function(options = {}) {
     const fetchImpl = options.fetch ?? globalThis.fetch;
     const readTextFile = options.readTextFile ?? defaultReadTextFile;
-    const homeDir = options.homeDir ?? globalThis.process?.env?.HOME ?? null;
+    const homeDir = options.homeDir ?? GLib.get_home_dir();
     const credentialsPath = resolveCredentialsPath(homeDir);
 
     return {
@@ -195,7 +199,7 @@ export function createCodexProvider(options = {}) {
     };
 }
 
-export const codexProviderConfig = {
+var codexProviderConfig = {
     CREDENTIALS_PATH,
     REFRESH_ENDPOINT,
     USAGE_ENDPOINT,

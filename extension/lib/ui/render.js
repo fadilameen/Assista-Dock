@@ -1,6 +1,34 @@
-const VERSION = 'brainusage 0.0.1';
+const VERSION = 'Assista Dock 1.0.0';
 
-export const PANEL_LABEL_MODES = ['min', 'claude-session', 'claude-weekly', 'codex-session', 'codex-weekly'];
+// All user-facing mode keys (high-level + fine-grained)
+var PANEL_LABEL_MODES = [
+    'none',
+    'overall',
+    'all',
+    'claude',
+    'claude-session',
+    'claude-weekly',
+    'codex',
+    'codex-session',
+    'codex-weekly',
+];
+
+// Fine-grained stored keys (never 'all', 'claude', 'codex' stored directly)
+const FINE_GRAINED = ['claude-session', 'claude-weekly', 'codex-session', 'codex-weekly'];
+
+// Expand a high-level mode to internal specific modes
+function expandMode(mode) {
+    switch (mode) {
+        case 'none':    return [];           // no tray entries
+        case 'overall': return ['min'];
+        case 'all':     return FINE_GRAINED.slice();
+        case 'claude':  return ['claude-session', 'claude-weekly'];
+        case 'codex':   return ['codex-session', 'codex-weekly'];
+        // Fine-grained modes and 'min' pass through directly
+        case 'min':     return ['min'];
+        default:        return [mode];
+    }
+}
 
 function getPanelLabelValue(summary, mode) {
     if (mode === 'min' || !mode)
@@ -19,6 +47,40 @@ function getPanelLabelValue(summary, mode) {
     }
 }
 
+// Tray label: "S:" for session, "W:" for weekly, blank for overall
+const MODE_LABEL = {
+    'min':            '',
+    'claude-session': 'S:',
+    'claude-weekly':  'W:',
+    'codex-session':  'S:',
+    'codex-weekly':   'W:',
+};
+
+// Which service icon for each specific mode
+const MODE_ICON = {
+    'min':            null,      // both icons shown
+    'claude-session': 'claude',
+    'claude-weekly':  'claude',
+    'codex-session':  'codex',
+    'codex-weekly':   'codex',
+};
+
+function buildPanelColor(summary, specificModes) {
+    if (!Array.isArray(specificModes) || specificModes.length === 0)
+        return getDotColor(summary?.minRemainingPct);
+
+    // Use the worst (lowest) color across all entries
+    const ORDER = ['green', 'emerald', 'yellow', 'orange', 'red', 'gray'];
+    let worst = 'green';
+    for (const mode of specificModes) {
+        const val = getPanelLabelValue(summary, mode);
+        const color = getDotColor(val);
+        if (ORDER.indexOf(color) > ORDER.indexOf(worst))
+            worst = color;
+    }
+    return worst;
+}
+
 function formatPercent(value) {
     if (!Number.isFinite(value))
         return '--';
@@ -26,20 +88,26 @@ function formatPercent(value) {
     return `${Math.round(value)}%`;
 }
 
-export function getDotColor(pct) {
+var getDotColor = function(pct) {
     if (!Number.isFinite(pct))
-        return 'red';
+        return 'gray';
 
-    if (pct >= 70)
+    if (pct >= 80)
         return 'green';
+
+    if (pct >= 50)
+        return 'emerald';
 
     if (pct >= 30)
         return 'yellow';
 
+    if (pct >= 15)
+        return 'orange';
+
     return 'red';
 }
 
-export function formatRelativeTime(iso, now) {
+var formatRelativeTime = function(iso, now) {
     if (!iso)
         return '--';
 
@@ -97,6 +165,9 @@ function toWarningText(providerLabel, code) {
     if (code === 'SCHEMA_CHANGED')
         return `${providerLabel}: schema changed`;
 
+    if (code === 'MISSING_CREDS')
+        return `${providerLabel}: missing credentials`;
+
     return '';
 }
 
@@ -151,17 +222,40 @@ function formatNextUpdate(lastUpdatedAtIso, pollIntervalMs, now) {
     return `Next update in ${totalMinutes}m`;
 }
 
-export function buildUsageViewModel(summary, deps = {}) {
+var buildUsageViewModel = function(summary, deps = {}) {
     const now = deps.now ?? Date.now();
     const version = deps.version ?? VERSION;
     const pollIntervalMs = deps.pollIntervalMs ?? 180_000;
-    const panelLabelMode = deps.panelLabelMode ?? 'min';
+
+    // Accept both old single string and new array; default to 'overall'
+    let userModes = deps.panelLabelModes ?? deps.panelLabelMode ?? ['overall'];
+    if (typeof userModes === 'string')
+        userModes = [userModes];
+
+    // Expand each high-level mode to its specific internal modes
+    const specificModes = userModes.flatMap(m => expandMode(m));
 
     const claude = summary?.providers?.claude ?? null;
     const codex = summary?.providers?.codex ?? null;
 
+    // Build per-entry data for the tray: each specific mode gets its own label, color, icon
+    const panelEntries = specificModes.map(mode => {
+        const val = getPanelLabelValue(summary, mode);
+        const label = MODE_LABEL[mode] ?? '';
+        const pct = formatPercent(val);
+        // Format: "S: 85%" / "W: 60%" / "85%" (for overall/min)
+        const text = label ? `${label} ${pct}` : pct;
+        return {
+            mode,
+            text,
+            color: getDotColor(val),
+            icon: MODE_ICON[mode] ?? null,
+        };
+    });
+
     return {
-        panelLabel: formatPercent(getPanelLabelValue(summary, panelLabelMode)),
+        panelColor: buildPanelColor(summary, specificModes),
+        panelEntries,
         services: [
             buildServiceViewModel('Codex', codex?.data, codex?.code, now),
             buildServiceViewModel('Claude', claude?.data, claude?.code, now),

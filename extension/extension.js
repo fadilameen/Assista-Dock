@@ -1,94 +1,155 @@
-import GLib from 'gi://GLib';
-import GObject from 'gi://GObject';
-import St from 'gi://St';
-import Clutter from 'gi://Clutter';
+const ExtensionUtils = imports.misc.extensionUtils;
+const Me = ExtensionUtils.getCurrentExtension();
 
-import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
-import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+const { GLib, GObject, St, Clutter, Gio } = imports.gi;
 
-import {createScheduler, DEFAULT_POLL_INTERVAL_MS} from './lib/core/scheduler.js';
-import {createThresholdNotifier} from './lib/core/notifications.js';
-import {createClaudeProvider} from './lib/providers/claude.js';
-import {createCodexProvider} from './lib/providers/codex.js';
-import {readTextFile} from './lib/runtime/fs.js';
-import {createFetch} from './lib/runtime/fetch.js';
-import {buildUsageViewModel, PANEL_LABEL_MODES} from './lib/ui/render.js';
+const Main = imports.ui.main;
+const PanelMenu = imports.ui.panelMenu;
+const PopupMenu = imports.ui.popupMenu;
 
-const FILL_CLASSES = {
-    green: 'usage-fill-green',
-    yellow: 'usage-fill-yellow',
-    red: 'usage-fill-red',
+
+const {createScheduler, DEFAULT_POLL_INTERVAL_MS} = Me.imports.lib.core.scheduler;
+const {createThresholdNotifier} = Me.imports.lib.core.notifications;
+const {createClaudeProvider} = Me.imports.lib.providers.claude;
+const {createCodexProvider} = Me.imports.lib.providers.codex;
+const {readTextFile} = Me.imports.lib.runtime.fs;
+const {createFetch} = Me.imports.lib.runtime.fetch;
+const {buildUsageViewModel, PANEL_LABEL_MODES} = Me.imports.lib.ui.render;
+
+// Map dot colors to hex-style CSS colors for inline style on percent label
+const FILL_COLOR = {
+    gray:    '#64748b',
+    green:   '#10b981',
+    emerald: '#34d399',
+    yellow:  '#fbbf24',
+    orange:  '#f97316',
+    red:     '#ef4444',
 };
 
-function createWindowWidgets() {
-    const box = new St.BoxLayout({
-        vertical: true,
-        style_class: 'usage-window-row',
-    });
+// CSS class for the bar fill
+const FILL_CLASSES = {
+    gray:    'usage-fill-gray',
+    green:   'usage-fill-green',
+    emerald: 'usage-fill-emerald',
+    yellow:  'usage-fill-yellow',
+    orange:  'usage-fill-orange',
+    red:     'usage-fill-red',
+};
 
-    const label = new St.Label({style_class: 'usage-window-label'});
+const PANEL_CLASSES = {
+    gray:    'usage-panel-gray',
+    green:   'usage-panel-green',
+    emerald: 'usage-panel-emerald',
+    yellow:  'usage-panel-yellow',
+    orange:  'usage-panel-orange',
+    red:     'usage-panel-red',
+};
 
-    const track = new St.BoxLayout({style_class: 'usage-progress-track'});
+// Build one metric block: label + pct row, track, reset text
+function createMetricWidgets() {
+    const box = new St.BoxLayout({vertical: true, style_class: 'usage-metric'});
+    box.set_x_expand(true);
+
+    // Row: label left, pct right
+    const mRow = new St.BoxLayout({style_class: 'usage-m-row'});
+    mRow.set_x_expand(true);
+    const mLabel = new St.Label({text: '--', style_class: 'usage-m-label'});
+    mLabel.set_x_expand(false);
+    const mPct = new St.Label({text: '--%', style_class: 'usage-m-pct'});
+    mPct.set_x_expand(false);
+    const mRowSpacer = new St.Widget();
+    mRowSpacer.set_x_expand(true);
+    mRow.add_child(mLabel);
+    mRow.add_child(mRowSpacer);
+    mRow.add_child(mPct);
+
+    // Progress bar
+    const track = new St.BoxLayout({style_class: 'usage-track'});
     track.set_x_expand(true);
-    const fill = new St.Widget({style_class: 'usage-fill-green'});
+    const fill = new St.Widget({style_class: 'usage-fill-gray'});
     fill._remainingPct = 0;
     track.add_child(fill);
 
     track.connect('notify::allocation', () => {
         const node = track.get_theme_node();
         if (!node) return;
-        const contentBox = node.get_content_box(track.get_allocation_box());
-        const contentWidth = contentBox.x2 - contentBox.x1;
-        if (contentWidth > 0)
-            fill.set_width(Math.round(contentWidth * fill._remainingPct / 100));
+        const cb = node.get_content_box(track.get_allocation_box());
+        const w = cb.x2 - cb.x1;
+        if (w > 0)
+            fill.set_width(Math.round(w * fill._remainingPct / 100));
     });
 
-    const infoRow = new St.BoxLayout({style_class: 'usage-info-row'});
-    infoRow.set_x_expand(true);
-    const remainingLabel = new St.Label({text: '-- left'});
-    const resetsLabel = new St.Label({text: '--'});
-    const spacer = new St.Widget();
-    spacer.set_x_expand(true);
-    infoRow.add_child(remainingLabel);
-    infoRow.add_child(spacer);
-    infoRow.add_child(resetsLabel);
+    // Reset text (right-aligned)
+    const mReset = new St.Label({text: '--', style_class: 'usage-m-reset'});
+    mReset.set_x_expand(true);
+    mReset.set_x_align(Clutter.ActorAlign.END);
 
-    box.add_child(label);
+    box.add_child(mRow);
     box.add_child(track);
-    box.add_child(infoRow);
+    box.add_child(mReset);
 
-    return {box, label, track, fill, remainingLabel, resetsLabel};
+    return {box, mLabel, mPct, track, fill, mReset};
 }
 
-function createServiceSection() {
-    const container = new St.BoxLayout({vertical: true, style_class: 'usage-service-card'});
+// Build one service card (logo header + 2 metrics separated by a divider)
+function createServiceCard(iconPath) {
+    const card = new St.BoxLayout({vertical: true, style_class: 'usage-card'});
+    card.set_x_expand(true);
 
-    const header = new St.BoxLayout({style_class: 'usage-service-header'});
-    const nameLabel = new St.Label({style_class: 'usage-service-name'});
-    header.add_child(nameLabel);
+    // Logo header
+    const cardHead = new St.BoxLayout({style_class: 'usage-card-head'});
+    cardHead.set_x_expand(true);
 
-    const window0 = createWindowWidgets();
-    const window1 = createWindowWidgets();
+    try {
+        const gicon = Gio.icon_new_for_string(iconPath);
+        const logoWidget = new St.Icon({
+            gicon,
+            icon_size: 28,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        cardHead.add_child(logoWidget);
+    } catch (_e) {
+        const fallback = new St.Label({text: '●', style_class: 'usage-m-label'});
+        cardHead.add_child(fallback);
+    }
+    card.add_child(cardHead);
 
-    const warningLabel = new St.Label({style_class: 'usage-warning'});
-    warningLabel.hide();
+    const metric0 = createMetricWidgets();
+    const divider = new St.Widget({style_class: 'usage-divider'});
+    divider.set_x_expand(true);
+    const metric1 = createMetricWidgets();
 
-    container.add_child(header);
-    container.add_child(window0.box);
-    container.add_child(window1.box);
-    container.add_child(warningLabel);
+    card.add_child(metric0.box);
+    card.add_child(divider);
+    card.add_child(metric1.box);
 
-    return {container, nameLabel, windows: [window0, window1], warningLabel};
+    return {card, metrics: [metric0, metric1]};
 }
 
 const MODE_LABELS = {
-    'min': 'All (minimum)',
-    'claude-session': 'Claude Session',
-    'claude-weekly': 'Claude Weekly',
-    'codex-session': 'Codex Session',
-    'codex-weekly': 'Codex Weekly',
+    'none':           'None (hide tray)',
+    'overall':        'Overall (lowest %)',
+    'all':            'All metrics',
+    'claude':         'Claude',
+    'claude-session': '    · Session',
+    'claude-weekly':  '    · Weekly',
+    'codex':          'Codex',
+    'codex-session':  '    · Session',
+    'codex-weekly':   '    · Weekly',
+};
+
+// Fine-grained leaf keys — these are what gets stored in GSettings
+const FINE_KEYS = ['claude-session', 'claude-weekly', 'codex-session', 'codex-weekly'];
+const CLAUDE_KEYS = ['claude-session', 'claude-weekly'];
+const CODEX_KEYS  = ['codex-session', 'codex-weekly'];
+
+// Which service icon to show in the tray for each mode
+const MODE_SERVICE_MAP = {
+    'min':            null,      // show both icons
+    'claude-session': 'claude',
+    'claude-weekly':  'claude',
+    'codex-session':  'codex',
+    'codex-weekly':   'codex',
 };
 
 const UsageIndicator = GObject.registerClass(
@@ -101,20 +162,26 @@ class UsageIndicator extends PanelMenu.Button {
         this._lastSummary = null;
         this._timerSourceId = 0;
         this._modeItems = [];
+        this._trayWidgets = []; // track dynamically created tray children
 
-        this._label = new St.Label({
-            text: '--',
+        // Tray box: holds [icon label] [icon label] ... pairs
+        this._trayBox = new St.BoxLayout({
             y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'usage-tray-box',
         });
-        this.add_child(this._label);
+        this.add_child(this._trayBox);
 
         this._buildPopup();
         this._startRelativeTimeTimer();
 
-        this._settingsChangedId = this._settings.connect('changed::panel-label-mode', () => {
+        this._settingsChangedId = this._settings.connect('changed::panel-label-modes', () => {
             this._updateOrnaments();
             this._refreshRelativeTimes();
         });
+    }
+
+    _iconPath(name) {
+        return Me.dir.get_child(`icons/${name}.svg`).get_path();
     }
 
     _buildPopup() {
@@ -122,40 +189,56 @@ class UsageIndicator extends PanelMenu.Button {
             reactive: false,
             can_focus: false,
         });
+        menuItem.set_x_expand(true);
 
         this._popupBox = new St.BoxLayout({
             vertical: true,
-            style_class: 'usage-popup-box',
+            style_class: 'usage-panel',
         });
+        this._popupBox.set_x_expand(true);
+        // Force the inner box to also take full width
+        this._popupBox.set_x_align(Clutter.ActorAlign.FILL);
 
-        this._codexSection = createServiceSection();
-        this._codexSection.nameLabel.text = 'Codex';
+        // Codex card (index 0 in vm.services)
+        this._codexCard = createServiceCard(this._iconPath('codex'));
 
-        this._claudeSection = createServiceSection();
-        this._claudeSection.nameLabel.text = 'Claude';
+        // Claude card (index 1 in vm.services)
+        this._claudeCard = createServiceCard(this._iconPath('claude'));
 
-        const separator = new St.Widget({style_class: 'usage-separator'});
-        separator.set_x_expand(true);
+        // Separator between the two cards
+        const cardSep = new St.Widget({style_class: 'usage-card-separator'});
+        cardSep.set_x_expand(true);
 
-        const footerRow = new St.BoxLayout({style_class: 'usage-footer-row'});
-        footerRow.set_x_expand(true);
-        this._versionLabel = new St.Label({text: 'brainusage 0.0.1'});
-        this._nextUpdateLabel = new St.Label({text: 'Next update in --'});
+        // Footer
+        const footer = new St.BoxLayout({style_class: 'usage-footer'});
+        footer.set_x_expand(true);
+
+        this._versionLabel = new St.Label({text: 'Assista Dock 1.0.0', style_class: 'usage-footer-left'});
+        this._nextUpdateLabel = new St.Label({text: 'Next update in --', style_class: 'usage-next'});
         const footerSpacer = new St.Widget();
         footerSpacer.set_x_expand(true);
-        footerRow.add_child(this._versionLabel);
-        footerRow.add_child(footerSpacer);
-        footerRow.add_child(this._nextUpdateLabel);
 
-        this._popupBox.add_child(this._codexSection.container);
-        this._popupBox.add_child(this._claudeSection.container);
-        this._popupBox.add_child(separator);
-        this._popupBox.add_child(footerRow);
+        footer.add_child(this._versionLabel);
+        footer.add_child(footerSpacer);
+        footer.add_child(this._nextUpdateLabel);
+
+        this._popupBox.add_child(this._claudeCard.card);
+        this._popupBox.add_child(cardSep);
+        this._popupBox.add_child(this._codexCard.card);
+        this._popupBox.add_child(footer);
 
         menuItem.add_child(this._popupBox);
         this.menu.addMenuItem(menuItem);
 
-        const refreshItem = new PopupMenu.PopupMenuItem('Refresh');
+        // Remove the left ornament gutter (the invisible dot space)
+        // that PopupBaseMenuItem reserves even when no ornament is shown.
+        if (menuItem._ornamentLabel)
+            menuItem._ornamentLabel.set_width(0);
+
+        // Separator + Refresh + Panel display
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        const refreshItem = new PopupMenu.PopupMenuItem('↺  Refresh Now');
         this._refreshSignalId = refreshItem.connect('activate', () => {
             void this._scheduler?.refresh();
         });
@@ -166,15 +249,13 @@ class UsageIndicator extends PanelMenu.Button {
     }
 
     _buildDisplaySubmenu() {
-        this._displaySubmenu = new PopupMenu.PopupSubMenuMenuItem('Panel display');
+        this._displaySubmenu = new PopupMenu.PopupSubMenuMenuItem('Configure');
         this._modeItems = [];
 
         for (const mode of PANEL_LABEL_MODES) {
             const item = new PopupMenu.PopupMenuItem(MODE_LABELS[mode] ?? mode);
             item._modeKey = mode;
-            item.connect('activate', () => {
-                this._settings.set_string('panel-label-mode', mode);
-            });
+            item.connect('activate', () => this._onModeActivate(mode));
             this._modeItems.push(item);
             this._displaySubmenu.menu.addMenuItem(item);
         }
@@ -183,14 +264,96 @@ class UsageIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(this._displaySubmenu);
     }
 
+    _onModeActivate(mode) {
+        const current = this._settings.get_strv('panel-label-modes');
+
+        // ── None: exclusive, hides tray ───────────────────────────────
+        if (mode === 'none') {
+            this._settings.set_strv('panel-label-modes', ['none']);
+            return;
+        }
+
+        // ── Overall: exclusive reset ──────────────────────────────────
+        if (mode === 'overall') {
+            this._settings.set_strv('panel-label-modes', ['overall']);
+            return;
+        }
+
+        // ── All: exclusive, selects all 4 fine-grained keys ──────────
+        if (mode === 'all') {
+            const allSelected = FINE_KEYS.every(k => current.includes(k));
+            this._settings.set_strv('panel-label-modes',
+                allSelected ? ['overall'] : [...FINE_KEYS]);
+            return;
+        }
+
+        // ── Group (claude / codex): batch toggle ──────────────────────
+        const groupKeys = mode === 'claude' ? CLAUDE_KEYS : mode === 'codex' ? CODEX_KEYS : null;
+        if (groupKeys) {
+            const allIn = groupKeys.every(k => current.includes(k));
+            let next = current.filter(k => k !== 'overall' && k !== 'none');
+            if (allIn) {
+                next = next.filter(k => !groupKeys.includes(k));
+            } else {
+                for (const k of groupKeys) {
+                    if (!next.includes(k)) next.push(k);
+                }
+            }
+            if (next.length === 0) next = ['overall'];
+            this._settings.set_strv('panel-label-modes', next);
+            return;
+        }
+
+        // ── Fine-grained (claude-session etc.): individual toggle ─────
+        let next = current.filter(k => k !== 'overall' && k !== 'none');
+        if (next.includes(mode)) {
+            next = next.filter(k => k !== mode);
+        } else {
+            next = [...next, mode];
+        }
+        if (next.length === 0) next = ['overall'];
+        this._settings.set_strv('panel-label-modes', next);
+    }
+
     _updateOrnaments() {
-        const current = this._settings.get_string('panel-label-mode');
+        const current = this._settings.get_strv('panel-label-modes');
+        const isNone      = current.includes('none');
+        const hasFine     = !isNone && current.some(k => FINE_KEYS.includes(k));
+        const allClaudeIn = CLAUDE_KEYS.every(k => current.includes(k));
+        const allCodexIn  = CODEX_KEYS.every(k => current.includes(k));
+        const allFineIn   = FINE_KEYS.every(k => current.includes(k));
+
         for (const item of this._modeItems) {
-            item.setOrnament(
-                item._modeKey === current
-                    ? PopupMenu.Ornament.DOT
-                    : PopupMenu.Ornament.NONE,
-            );
+            const key = item._modeKey;
+            let checked = false;
+
+            switch (key) {
+                case 'none':
+                    checked = isNone;
+                    break;
+                case 'overall':
+                    checked = !isNone && !hasFine;
+                    break;
+                case 'all':
+                    checked = allFineIn;
+                    break;
+                case 'claude':
+                    checked = allClaudeIn;
+                    break;
+                case 'codex':
+                    checked = allCodexIn;
+                    break;
+                case 'claude-session':
+                case 'claude-weekly':
+                    checked = current.includes(key) && !allClaudeIn;
+                    break;
+                case 'codex-session':
+                case 'codex-weekly':
+                    checked = current.includes(key) && !allCodexIn;
+                    break;
+            }
+
+            item.setOrnament(checked ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
         }
     }
 
@@ -212,7 +375,7 @@ class UsageIndicator extends PanelMenu.Button {
         this._applyViewModel(buildUsageViewModel(this._lastSummary, {
             now: Date.now(),
             pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
-            panelLabelMode: this._settings.get_string('panel-label-mode'),
+            panelLabelModes: this._settings.get_strv('panel-label-modes'),
         }));
     }
 
@@ -221,45 +384,118 @@ class UsageIndicator extends PanelMenu.Button {
         this._applyViewModel(buildUsageViewModel(summary, {
             now: Date.now(),
             pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
-            panelLabelMode: this._settings.get_string('panel-label-mode'),
+            panelLabelModes: this._settings.get_strv('panel-label-modes'),
         }));
     }
 
-    _applyViewModel(vm) {
-        this._label.text = vm.panelLabel;
+    _applyMetric(metric, w) {
+        metric.mLabel.text = w.label;
+        metric.mPct.text = w.remainingText;
 
-        const sections = [this._codexSection, this._claudeSection];
+        // Inline color on the pct label via style
+        const col = FILL_COLOR[w.dotColor] ?? '#ef4444';
+        metric.mPct.set_style(`color: ${col};`);
 
-        for (let i = 0; i < vm.services.length; i++) {
-            const svc = vm.services[i];
-            const section = sections[i];
+        const fillClass = FILL_CLASSES[w.dotColor] ?? 'usage-fill-red';
+        metric.fill.style_class = fillClass;
+        metric.fill._remainingPct = w.remainingPct;
+        metric.mReset.text = w.resetsInText;
 
-            section.nameLabel.text = svc.name;
+        const node = metric.track.get_theme_node();
+        if (node) {
+            const cb = node.get_content_box(metric.track.get_allocation_box());
+            const tw = cb.x2 - cb.x1;
+            if (tw > 0)
+                metric.fill.set_width(Math.round(tw * w.remainingPct / 100));
+        }
+    }
 
-            for (let j = 0; j < svc.windows.length; j++) {
-                const w = svc.windows[j];
-                const widgets = section.windows[j];
+    _rebuildTray(vm) {
+        // Remove all previous tray children
+        for (const w of this._trayWidgets)
+            this._trayBox.remove_child(w);
+        this._trayWidgets = [];
 
-                widgets.label.text = w.label;
-                widgets.fill.style_class = FILL_CLASSES[w.dotColor] ?? 'usage-fill-red';
-                widgets.fill._remainingPct = w.remainingPct;
-                widgets.remainingLabel.text = w.remainingText;
-                widgets.resetsLabel.text = w.resetsInText;
+        // vm.panelEntries = [{mode, text, color, icon}]
+        const entries = vm.panelEntries ?? [];
 
-                const node = widgets.track.get_theme_node();
-                if (node) {
-                    const contentBox = node.get_content_box(widgets.track.get_allocation_box());
-                    const contentWidth = contentBox.x2 - contentBox.x1;
-                    if (contentWidth > 0)
-                        widgets.fill.set_width(Math.round(contentWidth * w.remainingPct / 100));
-                }
+        // 'none' mode — no entries; show a muted dash so the button stays clickable
+        if (entries.length === 0) {
+            const lbl = new St.Label({
+                text: '–',
+                y_align: Clutter.ActorAlign.CENTER,
+                style_class: 'usage-panel-gray',
+            });
+            this._trayBox.add_child(lbl);
+            this._trayWidgets.push(lbl);
+            return;
+        }
+
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+
+            // Separator dot between entries (except first)
+            if (i > 0) {
+                const sep = new St.Label({
+                    text: ' · ',
+                    y_align: Clutter.ActorAlign.CENTER,
+                    style_class: 'usage-panel-gray',
+                });
+                this._trayBox.add_child(sep);
+                this._trayWidgets.push(sep);
             }
 
-            if (svc.warning) {
-                section.warningLabel.text = svc.warning;
-                section.warningLabel.show();
-            } else {
-                section.warningLabel.hide();
+            // Service icon (claude / codex), or both for 'min'
+            if (entry.mode === 'min') {
+                // Show both icons side by side for the global minimum
+                for (const svc of ['codex', 'claude']) {
+                    const icon = this._makeTrayIcon(svc, 14);
+                    this._trayBox.add_child(icon);
+                    this._trayWidgets.push(icon);
+                }
+            } else if (entry.icon) {
+                const icon = this._makeTrayIcon(entry.icon, 14);
+                this._trayBox.add_child(icon);
+                this._trayWidgets.push(icon);
+            }
+
+            // Percentage label — colored by THIS entry's own usage level
+            const lbl = new St.Label({
+                text: ` ${entry.text}`,
+                y_align: Clutter.ActorAlign.CENTER,
+                style_class: PANEL_CLASSES[entry.color] ?? 'usage-panel-gray',
+            });
+            this._trayBox.add_child(lbl);
+            this._trayWidgets.push(lbl);
+        }
+    }
+
+    _makeTrayIcon(svcName, size) {
+        try {
+            const gicon = Gio.icon_new_for_string(this._iconPath(svcName));
+            return new St.Icon({
+                gicon,
+                icon_size: size,
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+        } catch (_e) {
+            return new St.Label({
+                text: svcName === 'claude' ? '◆' : '⬡',
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+        }
+    }
+
+    _applyViewModel(vm) {
+        this._rebuildTray(vm);
+
+        // vm.services[0] = Codex, vm.services[1] = Claude
+        const cards = [this._codexCard, this._claudeCard];
+        for (let i = 0; i < vm.services.length; i++) {
+            const svc = vm.services[i];
+            const card = cards[i];
+            for (let j = 0; j < svc.windows.length; j++) {
+                this._applyMetric(card.metrics[j], svc.windows[j]);
             }
         }
 
@@ -288,7 +524,13 @@ class UsageIndicator extends PanelMenu.Button {
     }
 });
 
-export default class UsageLimitsExtension extends Extension {
+class UsageLimitsExtension {
+    constructor() {
+        this.uuid = Me.metadata.uuid;
+    }
+    getSettings() {
+        return ExtensionUtils.getSettings(Me.metadata['settings-schema']);
+    }
     enable() {
         this._fetchRuntime = createFetch();
         const fetchImpl = this._fetchRuntime.fetch;
@@ -337,4 +579,8 @@ export default class UsageLimitsExtension extends Extension {
         this._indicator = null;
         this._settings = null;
     }
+}
+
+function init() {
+    return new UsageLimitsExtension();
 }

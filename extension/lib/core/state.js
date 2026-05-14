@@ -1,10 +1,11 @@
-export const PROVIDER_STATE_CODES = {
+var PROVIDER_STATE_CODES = {
     OK: 'OK',
     PARTIAL_DATA: 'PARTIAL_DATA',
     AUTH_EXPIRED: 'AUTH_EXPIRED',
     RATE_LIMITED: 'RATE_LIMITED',
     NETWORK_ERROR: 'NETWORK_ERROR',
     SCHEMA_CHANGED: 'SCHEMA_CHANGED',
+    MISSING_CREDS: 'MISSING_CREDS',
 };
 
 const ERROR_CODE_MAP = {
@@ -14,6 +15,7 @@ const ERROR_CODE_MAP = {
     network_error: PROVIDER_STATE_CODES.NETWORK_ERROR,
     schema_changed: PROVIDER_STATE_CODES.SCHEMA_CHANGED,
     parse_error: PROVIDER_STATE_CODES.SCHEMA_CHANGED,
+    missing_creds: PROVIDER_STATE_CODES.MISSING_CREDS,
 };
 
 function toMappedCode(result) {
@@ -27,7 +29,7 @@ function toMappedCode(result) {
     return PROVIDER_STATE_CODES.SCHEMA_CHANGED;
 }
 
-export function createProviderState(name) {
+var createProviderState = function(name) {
     return {
         name,
         inFlight: false,
@@ -41,7 +43,7 @@ export function createProviderState(name) {
     };
 }
 
-export function applyProviderResult(state, result, requestId, updatedAtIso) {
+var applyProviderResult = function(state, result, requestId, updatedAtIso) {
     if (requestId < state.latestAppliedRequestId)
         return false;
 
@@ -65,7 +67,7 @@ export function applyProviderResult(state, result, requestId, updatedAtIso) {
     return true;
 }
 
-export function snapshotProviderState(state) {
+var snapshotProviderState = function(state) {
     return {
         code: state.code,
         data: state.data,

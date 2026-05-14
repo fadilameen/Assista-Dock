@@ -1,4 +1,4 @@
-# Brain Usage
+# Assista Dock
 
 GNOME Shell extension that tracks your AI usage limits for **Claude** (Anthropic) and **Codex/ChatGPT** (OpenAI) and displays remaining percentages in the top panel.
 
@@ -27,11 +27,11 @@ These credential files are created automatically when you sign in to the respect
 
 ### From GitHub Releases (recommended)
 
-1. Download the latest `brainusage@altairinglorious.shell-extension.zip` from [Releases](https://github.com/AltairInglorious/brainusage/releases/latest)
+1. Download the latest `assistadock@fadilameen.shell-extension.zip` from [Releases](https://github.com/fadilameen/assista-dock/releases/latest)
 
 2. Install via terminal:
    ```bash
-   gnome-extensions install --force brainusage@altairinglorious.shell-extension.zip
+   gnome-extensions install --force assistadock@fadilameen.shell-extension.zip
    ```
 
 3. Restart GNOME Shell:
@@ -40,14 +40,14 @@ These credential files are created automatically when you sign in to the respect
 
 4. Enable the extension:
    ```bash
-   gnome-extensions enable brainusage@altairinglorious
+   gnome-extensions enable assistadock@fadilameen
    ```
 
 ### From source
 
 ```bash
-git clone https://github.com/AltairInglorious/brainusage.git
-cd brainusage
+git clone https://github.com/fadilameen/assista-dock.git
+cd assista-dock
 bash scripts/dev/pack.sh
 bash scripts/dev/install.sh
 # Restart GNOME Shell (see above), then:

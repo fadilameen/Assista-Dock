@@ -1,5 +1,5 @@
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
+const { Gio } = imports.gi;
+const { GLib } = imports.gi;
 
 function resolvePath(filePath) {
     if (typeof filePath !== 'string' || filePath.length === 0)
@@ -29,7 +29,7 @@ function loadContents(file) {
     });
 }
 
-export async function readTextFile(filePath) {
+var readTextFile = async function(filePath) {
     const resolvedPath = resolvePath(filePath);
     const file = Gio.File.new_for_path(resolvedPath);
     const contents = await loadContents(file);

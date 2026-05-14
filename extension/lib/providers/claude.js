@@ -1,4 +1,7 @@
-import {normalizeClaudeUsage} from '../core/normalize.js';
+const { GLib } = imports.gi;
+const ExtensionUtils = imports.misc.extensionUtils;
+const Me = ExtensionUtils.getCurrentExtension();
+const {normalizeClaudeUsage} = Me.imports.lib.core.normalize;
 
 const CREDENTIALS_PATH = '~/.claude/.credentials.json';
 const REFRESH_ENDPOINT = 'https://platform.claude.com/v1/oauth/token';
@@ -155,10 +158,10 @@ async function refreshAccessToken(fetchImpl, refreshToken) {
     });
 }
 
-export function createClaudeProvider(options = {}) {
+var createClaudeProvider = function(options = {}) {
     const fetchImpl = options.fetch ?? globalThis.fetch;
     const readTextFile = options.readTextFile ?? defaultReadTextFile;
-    const homeDir = options.homeDir ?? globalThis.process?.env?.HOME ?? null;
+    const homeDir = options.homeDir ?? GLib.get_home_dir();
     const credentialsPath = resolveCredentialsPath(homeDir);
 
     return {
@@ -226,7 +229,7 @@ export function createClaudeProvider(options = {}) {
     };
 }
 
-export const claudeProviderConfig = {
+var claudeProviderConfig = {
     CREDENTIALS_PATH,
     REFRESH_ENDPOINT,
     USAGE_ENDPOINT,

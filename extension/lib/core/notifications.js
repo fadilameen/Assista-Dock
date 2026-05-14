@@ -43,7 +43,7 @@ function createWindowState(resetPeriod) {
     };
 }
 
-export function createThresholdNotifier(options = {}) {
+var createThresholdNotifier = function(options = {}) {
     const thresholdPct = options.thresholdPct ?? DEFAULT_THRESHOLD_PCT;
     const notifyFn = typeof options.notifyFn === 'function'
         ? options.notifyFn

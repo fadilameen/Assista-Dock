@@ -1,4 +1,4 @@
-# brainusage@altairinglorious GNOME Extension
+# assistadock@fadilameen GNOME Extension
 
 Minimal GNOME Shell extension scaffold for GNOME 45+ (tested target: GNOME 46).
 
@@ -32,7 +32,7 @@ Run all commands from repository root.
 bash scripts/dev/pack.sh
 ```
 
-Expected artifact: `brainusage@altairinglorious.shell-extension.zip` in repo root.
+Expected artifact: `assistadock@fadilameen.shell-extension.zip` in repo root.
 
 ### Install locally (user scope)
 
@@ -40,7 +40,7 @@ Expected artifact: `brainusage@altairinglorious.shell-extension.zip` in repo roo
 bash scripts/dev/install.sh
 ```
 
-This installs/updates `brainusage@altairinglorious` in your local GNOME extensions directory.
+This installs/updates `assistadock@fadilameen` in your local GNOME extensions directory.
 
 ### Enable extension
 
@@ -63,5 +63,5 @@ journalctl --user -f /usr/bin/gnome-shell
 Useful focused variant:
 
 ```bash
-journalctl --user -f /usr/bin/gnome-shell | grep -E 'brainusage@altairinglorious|extension|JS ERROR'
+journalctl --user -f /usr/bin/gnome-shell | grep -E 'assistadock@fadilameen|extension|JS ERROR'
 ```

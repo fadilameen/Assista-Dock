@@ -19,7 +19,7 @@ function unixSecondsToIso(value) {
     return new Date(seconds * 1000).toISOString();
 }
 
-export function normalizeClaudeUsage(payload) {
+var normalizeClaudeUsage = function(payload) {
     const fiveHourUtilization = Number(payload?.five_hour?.utilization);
     const sevenDayUtilization = Number(payload?.seven_day?.utilization);
 
@@ -35,7 +35,7 @@ export function normalizeClaudeUsage(payload) {
     };
 }
 
-export function normalizeCodexUsage(payload) {
+var normalizeCodexUsage = function(payload) {
     const primaryWindow = payload?.rate_limit?.primary_window;
     const secondaryWindow = payload?.rate_limit?.secondary_window;
 

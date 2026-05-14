@@ -1,4 +1,7 @@
-import {snapshotProviderState} from './state.js';
+const ExtensionUtils = imports.misc.extensionUtils;
+const Me = ExtensionUtils.getCurrentExtension();
+
+const {snapshotProviderState} = Me.imports.lib.core.state;
 
 function collectRemainingPercentages(data) {
     if (!data || typeof data !== 'object')
@@ -19,7 +22,7 @@ function collectRemainingPercentages(data) {
     return values;
 }
 
-export function computeSummary(providerStates) {
+var computeSummary = function(providerStates) {
     const providers = {};
     const remainingPercentages = [];
     let latestTimestamp = null;

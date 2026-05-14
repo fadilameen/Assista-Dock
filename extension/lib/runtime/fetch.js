@@ -1,5 +1,6 @@
-import GLib from 'gi://GLib';
-import Soup from 'gi://Soup?version=3.0';
+imports.gi.versions.Soup = '2.4';
+const { GLib } = imports.gi;
+const { Soup } = imports.gi;
 
 function normalizeHeaders(headers) {
     if (!headers || typeof headers !== 'object')
@@ -36,41 +37,52 @@ function getContentType(headers) {
     return 'application/octet-stream';
 }
 
-function createResponse(status, bytes) {
-    let textCache = null;
-
-    async function text() {
-        if (textCache !== null)
-            return textCache;
-
-        textCache = new TextDecoder().decode(bytes.toArray());
-        return textCache;
-    }
-
+function createResponse(status, textData) {
     return {
         ok: status >= 200 && status < 300,
         status,
         async text() {
-            return text();
+            return textData;
         },
         async json() {
-            return JSON.parse(await text());
+            return JSON.parse(textData);
         },
     };
 }
 
-export function createFetch() {
-    const session = new Soup.Session();
+var createFetch = function() {
+    const session = new Soup.SessionAsync();
+    
+    // Automatically handle gzip decoding
+    try {
+        session.add_feature_by_type(Soup.ContentDecoder.$gtype);
+    } catch(e) {}
 
     function sendMessage(message) {
         return new Promise((resolve, reject) => {
-            session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, null, (source, result) => {
-                try {
-                    const bytes = source.send_and_read_finish(result);
-                    resolve(bytes);
-                } catch (error) {
-                    reject(error);
+            session.queue_message(message, (sess, msg) => {
+                if (msg.status_code <= 6) {
+                    reject(new Error(`Network error (Soup internal status): ${msg.status_code}`));
+                    return;
                 }
+                
+                let data = "";
+                if (msg.response_body && msg.response_body.data) {
+                    // Ensure data is treated as a string for JSON.parse
+                    data = msg.response_body.data;
+                    if (data instanceof Uint8Array || (typeof data !== 'string' && data !== null)) {
+                        try {
+                            data = new TextDecoder().decode(data);
+                        } catch (e) {
+                            data = String(data);
+                        }
+                    }
+                }
+                
+                resolve({
+                    status: msg.status_code,
+                    data: data
+                });
             });
         });
     }
@@ -87,15 +99,12 @@ export function createFetch() {
 
         const body = resolveBody(options);
         if (body !== null) {
-            const bytes = body instanceof Uint8Array
-                ? new GLib.Bytes(body)
-                : new GLib.Bytes(new TextEncoder().encode(body));
-
-            message.set_request_body_from_bytes(getContentType(options.headers), bytes);
+            // Soup 2.4 way to set body
+            message.set_request(getContentType(options.headers), Soup.MemoryUse.COPY, body);
         }
 
-        const bytes = await sendMessage(message);
-        return createResponse(message.get_status(), bytes);
+        const result = await sendMessage(message);
+        return createResponse(result.status, result.data);
     }
 
     function dispose() {

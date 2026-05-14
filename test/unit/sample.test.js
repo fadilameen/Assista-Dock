@@ -1,7 +1,7 @@
 import {expect, test} from 'bun:test';
 import {readFileSync} from 'node:fs';
 
-test('metadata UUID is brainusage@altairinglorious', () => {
+test('metadata UUID is assistadock@fadilameen', () => {
     const metadata = JSON.parse(readFileSync('extension/metadata.json', 'utf-8'));
-    expect(metadata.uuid).toBe('brainusage@altairinglorious');
+    expect(metadata.uuid).toBe('assistadock@fadilameen');
 });

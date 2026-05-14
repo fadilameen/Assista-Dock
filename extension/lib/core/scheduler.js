@@ -1,8 +1,11 @@
-import {computeSummary} from './aggregate.js';
-import {createBackoffManager} from './backoff.js';
-import {applyProviderResult, createProviderState} from './state.js';
+const ExtensionUtils = imports.misc.extensionUtils;
+const Me = ExtensionUtils.getCurrentExtension();
 
-export const DEFAULT_POLL_INTERVAL_MS = 180_000;
+const {computeSummary} = Me.imports.lib.core.aggregate;
+const {createBackoffManager} = Me.imports.lib.core.backoff;
+const {applyProviderResult, createProviderState} = Me.imports.lib.core.state;
+
+var DEFAULT_POLL_INTERVAL_MS = 180_000;
 
 function normalizeProviders(providersInput) {
     if (Array.isArray(providersInput)) {
@@ -29,7 +32,7 @@ function createNetworkFailureResult() {
     };
 }
 
-export function createScheduler(options = {}) {
+var createScheduler = function(options = {}) {
     const providers = normalizeProviders(options.providers);
     const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     const nowIso = options.nowIso ?? (() => new Date().toISOString());
