@@ -27,11 +27,11 @@ These credential files are created automatically when you sign in to the respect
 
 ### From GitHub Releases (recommended)
 
-1. Download the latest `assistadock@fadilameen.shell-extension.zip` from [Releases](https://github.com/fadilameen/assista-dock/releases/latest)
+1. Download the latest `assistadock@assista.shell-extension.zip` from [Releases](https://github.com/fadilameen/assista-dock/releases/latest)
 
 2. Install via terminal:
    ```bash
-   gnome-extensions install --force assistadock@fadilameen.shell-extension.zip
+   gnome-extensions install --force assistadock@assista.shell-extension.zip
    ```
 
 3. Restart GNOME Shell:
@@ -40,7 +40,7 @@ These credential files are created automatically when you sign in to the respect
 
 4. Enable the extension:
    ```bash
-   gnome-extensions enable assistadock@fadilameen
+   gnome-extensions enable assistadock@assista
    ```
 
 ### From source

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 EXTENSION_DIR="$ROOT_DIR/extension"
-ZIP_NAME="assistadock@fadilameen.shell-extension.zip"
+ZIP_NAME="assistadock@assista.shell-extension.zip"
 ZIP_PATH="$ROOT_DIR/$ZIP_NAME"
 EVIDENCE_PATH="$ROOT_DIR/.sisyphus/evidence/task-7-pack.txt"
 

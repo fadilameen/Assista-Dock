@@ -9,7 +9,7 @@ GNOME Shell 45/46 extension that polls Claude (Anthropic) and Codex (OpenAI) OAu
 ## Repository
 
 - GitHub: https://github.com/fadilameen/assista-dock
-- `gh release create v<X.Y.Z> assistadock@fadilameen.shell-extension.zip --title "v<X.Y.Z>" --notes "..."` — publish release
+- `gh release create v<X.Y.Z> assistadock@assista.shell-extension.zip --title "v<X.Y.Z>" --notes "..."` — publish release
 
 ## Commands
 
@@ -20,8 +20,8 @@ bash scripts/dev/pack.sh        # Pack .shell-extension.zip
 bash scripts/dev/install.sh     # Install extension locally (calls pack if needed)
 # GOTCHA: install.sh skips pack if zip already exists — always run pack.sh first after code changes
 # GOTCHA: gnome-extensions pack only includes top-level files — lib/ requires --extra-source=lib in pack.sh
-bash scripts/dev/enable.sh      # gnome-extensions enable assistadock@fadilameen
-bash scripts/dev/disable.sh     # gnome-extensions disable assistadock@fadilameen
+bash scripts/dev/enable.sh      # gnome-extensions enable assistadock@assista
+bash scripts/dev/disable.sh     # gnome-extensions disable assistadock@assista
 journalctl --user -f /usr/bin/gnome-shell  # Live extension logs
 ```
 
